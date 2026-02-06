@@ -1,0 +1,15 @@
+pragma module::chess;
+
+pub tag Quiet();
+pub tag Capture();
+pub tag Promotion(PieceKind);
+pub tag Castle();
+pub tag EnPassant();
+
+pub type MoveKind = Quiet() | Capture() | Promotion(PieceKind) | Castle() | EnPassant();
+
+pub type Move = {
+    kind: MoveKind,
+    from_square: Square,
+    to_square: Square
+}

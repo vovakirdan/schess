@@ -1,0 +1,250 @@
+pragma module::chess;
+
+type AttackDir = {
+    df: int,
+    dr: int,
+}
+
+fn opposite_color(side: PieceColor) -> PieceColor {
+    if (side == Color::White) {
+        return Color::Black;
+    } else {
+        return Color::White;
+    }
+}
+
+fn is_piece_at(board: &Board, file: int, rank: int, color: PieceColor, kind: PieceKind) -> bool {
+    if !in_bounds(file, rank) {
+        return false;
+    }
+    let sq = make_square(file, rank);
+    return compare board.piece_at(&sq) {
+        nothing => false;
+        Some(p) => p.color == color && p.kind == kind;
+    };
+}
+
+fn move_kind_eq(a: &MoveKind, b: &MoveKind) -> bool {
+    return compare a {
+        Quiet() => compare b { Quiet() => true; _ => false; };
+        Capture() => compare b { Capture() => true; _ => false; };
+        Promotion(k1) => compare b { Promotion(k2) => k1 == k2; _ => false; };
+        Castle() => compare b { Castle() => true; _ => false; };
+        EnPassant() => compare b { EnPassant() => true; _ => false; };
+    };
+}
+
+fn move_eq(a: &Move, b: &Move) -> bool {
+    return a.from_square.file == b.from_square.file &&
+        a.from_square.rank == b.from_square.rank &&
+        a.to_square.file == b.to_square.file &&
+        a.to_square.rank == b.to_square.rank &&
+        move_kind_eq(a.kind, b.kind);
+}
+
+fn apply_move_to_board(board: &mut Board, mv: &Move, piece: &Piece) -> nothing {
+    let from = mv.from_square;
+    let to_sq = mv.to_square;
+    let cells = &mut board.cells;
+    cells[board_index(from.file, from.rank)] = nothing;
+    compare mv.kind {
+        Promotion(k) => {
+            let promoted = Piece { kind = k, color = piece.color };
+            cells[board_index(to_sq.file, to_sq.rank)] = Some(promoted);
+        };
+        _ => {
+            let moved = Piece { kind = piece.kind, color = piece.color };
+            cells[board_index(to_sq.file, to_sq.rank)] = Some(moved);
+        };
+    };
+    return nothing;
+}
+
+pub fn is_square_attacked(
+    board: &Board,
+    sq: Square,
+    by: PieceColor
+) -> bool {
+    // pawn attacks
+    let mut pawn_rank = 0;
+    if (by == Color::White) {
+        pawn_rank = sq.rank - 1;
+    } else {
+        pawn_rank = sq.rank + 1;
+    }
+    if is_piece_at(board, sq.file - 1, pawn_rank, by, Kind::Pawn) {
+        return true;
+    }
+    if is_piece_at(board, sq.file + 1, pawn_rank, by, Kind::Pawn) {
+        return true;
+    }
+
+    // knight attacks
+    let knight_steps: AttackDir[8] = [
+        AttackDir { df =  1, dr =  2 }, AttackDir { df =  2, dr =  1 },
+        AttackDir { df =  2, dr = -1 }, AttackDir { df =  1, dr = -2 },
+        AttackDir { df = -1, dr = -2 }, AttackDir { df = -2, dr = -1 },
+        AttackDir { df = -2, dr =  1 }, AttackDir { df = -1, dr =  2 },
+    ];
+    for s in knight_steps {
+        if is_piece_at(board, sq.file + s.df, sq.rank + s.dr, by, Kind::Knight) {
+            return true;
+        }
+    }
+
+    // king attacks
+    let king_steps: AttackDir[8] = [
+        AttackDir { df =  1, dr =  0 }, AttackDir { df = -1, dr =  0 },
+        AttackDir { df =  0, dr =  1 }, AttackDir { df =  0, dr = -1 },
+        AttackDir { df =  1, dr =  1 }, AttackDir { df =  1, dr = -1 },
+        AttackDir { df = -1, dr =  1 }, AttackDir { df = -1, dr = -1 },
+    ];
+    for s in king_steps {
+        if is_piece_at(board, sq.file + s.df, sq.rank + s.dr, by, Kind::King) {
+            return true;
+        }
+    }
+
+    // rook/queen attacks
+    let rook_attack_dirs: AttackDir[4] = [
+        AttackDir { df =  1, dr =  0 },
+        AttackDir { df = -1, dr =  0 },
+        AttackDir { df =  0, dr =  1 },
+        AttackDir { df =  0, dr = -1 },
+    ];
+    for d in rook_attack_dirs {
+        let mut f = sq.file + d.df;
+        let mut r = sq.rank + d.dr;
+        while true {
+            if !in_bounds(f, r) {
+                break;
+            }
+            let tsq = make_square(f, r);
+            let dst = board.piece_at(&tsq);
+            let mut stop = false;
+            compare dst {
+                nothing => {};
+                Some(p) => {
+                    if p.color == by && (p.kind == Kind::Rook || p.kind == Kind::Queen) {
+                        return true;
+                    }
+                    stop = true;
+                };
+            };
+            if stop {
+                break;
+            }
+            f = f + d.df;
+            r = r + d.dr;
+        }
+    }
+
+    // bishop/queen attacks
+    let bishop_attack_dirs: AttackDir[4] = [
+        AttackDir { df =  1, dr =  1 },
+        AttackDir { df =  1, dr = -1 },
+        AttackDir { df = -1, dr =  1 },
+        AttackDir { df = -1, dr = -1 },
+    ];
+    for d in bishop_attack_dirs {
+        let mut f = sq.file + d.df;
+        let mut r = sq.rank + d.dr;
+        while true {
+            if !in_bounds(f, r) {
+                break;
+            }
+            let tsq = make_square(f, r);
+            let dst = board.piece_at(&tsq);
+            let mut stop = false;
+            compare dst {
+                nothing => {};
+                Some(p) => {
+                    if p.color == by && (p.kind == Kind::Bishop || p.kind == Kind::Queen) {
+                        return true;
+                    }
+                    stop = true;
+                };
+            };
+            if stop {
+                break;
+            }
+            f = f + d.df;
+            r = r + d.dr;
+        }
+    }
+
+    return false;
+}
+
+pub fn is_king_in_check(
+    board: &Board,
+    side: PieceColor
+) -> bool {
+    let mut king_sq = make_square(0, 0);
+    let mut found = false;
+    for r in 0..8 {
+        for f in 0..8 {
+            let sq = make_square(f, r);
+            let dst = board.piece_at(&sq);
+            compare dst {
+                nothing => {};
+                Some(p) => {
+                    if (p.color == side && p.kind == Kind::King) {
+                        king_sq = make_square(f, r);
+                        found = true;
+                    }
+                };
+            };
+            if found {
+                break;
+            }
+        }
+        if found {
+            break;
+        }
+    }
+    if !found {
+        return false;
+    }
+    let enemy = opposite_color(side);
+    return is_square_attacked(board, king_sq, enemy);
+}
+
+pub fn is_legal_move(
+    board: &Board,
+    mv: &Move,
+    side: PieceColor
+) -> bool {
+    let from = mv.from_square;
+    let mut piece_val = Piece { kind = Kind::Pawn, color = Color::White };
+    let mut has_piece = false;
+    compare board.piece_at(from) {
+        nothing => {};
+        Some(p) => {
+            piece_val = Piece { kind = p.kind, color = p.color };
+            has_piece = true;
+        };
+    };
+    if !has_piece {
+        return false;
+    }
+    if piece_val.color != side {
+        return false;
+    }
+
+    let candidates = pseudo_legal_moves_piece(board, from, &piece_val);
+    let mut found = false;
+    for cand in candidates {
+        if move_eq(&cand, mv) {
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return false;
+    }
+
+    let mut next_board = board_clone(board);
+    apply_move_to_board(&mut next_board, mv, &piece_val);
+    return !is_king_in_check(&next_board, side);
+}

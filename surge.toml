@@ -1,0 +1,14 @@
+# Surge project manifest
+[package]
+name = "schess"
+root = "."
+version = "0.1.0"
+
+[run]
+main = "main.sg"
+
+[version]
+version = "0.1.0-dev"
+commit = "9426aeda4b61"
+message = "Refactor intrinsic handling and improve operand type resolution"
+built = "2026-01-31T13:41:54Z"

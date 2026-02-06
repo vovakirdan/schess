@@ -1,0 +1,51 @@
+pragma module::chess;
+
+pub type Square = {
+    file: int,
+    rank: int
+}
+
+pub type Board = {
+    cells: Option<Piece>[64]
+}
+
+fn board_index(file: int, rank: int) -> int {
+    return rank * 8 + file;
+}
+
+fn board_clone(src: &Board) -> Board {
+    let mut out: Board = Board::new();
+    for r in 0..8 {
+        for f in 0..8 {
+            let sq = make_square(f, r);
+            out.set_piece(&sq, *src.piece_at(&sq));
+        }
+    }
+    return out;
+}
+
+extern<Board> {
+    // return empty board
+    pub fn new() -> Board {
+        return default::<Board>();
+    }
+
+    pub fn piece_at(self: &Board, square: &Square) -> &Option<Piece> {
+        let idx = board_index(square.file, square.rank);
+        return self.cells[idx];
+    }
+
+    pub fn is_empty(self: &Board, square: &Square) -> bool {
+        return compare self.piece_at(square) {
+            nothing => true;
+            Some(_) => false;
+        };
+    }
+
+    pub fn set_piece(self: &mut Board, square: &Square, piece: Piece?) -> nothing {
+        let idx = board_index(square.file, square.rank);
+        let cells = &mut self.cells;
+        cells[idx] = piece;
+        return nothing;
+    }
+}

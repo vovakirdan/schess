@@ -1,0 +1,22 @@
+pragma module::chess;
+
+pub type PieceColor = int;
+pub enum Color: PieceColor = {
+    White,
+    Black,
+}
+
+pub type PieceKind = int;
+pub enum Kind: PieceKind = {
+    Pawn,
+    Knight,
+    Bishop,
+    Rook,
+    Queen,
+    King,
+}
+
+pub type Piece = {
+    kind: PieceKind,
+    color: PieceColor
+}

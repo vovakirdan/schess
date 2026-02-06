@@ -1,0 +1,27 @@
+pragma module::chess;
+
+pub type Engine = {
+    game: Game,
+}
+
+extern<Engine> {
+    pub async fn legal_moves(self: &Engine) -> Move[] {
+        return legal_moves(self.game);
+    }
+
+    pub async fn make_move(self: &mut Engine, mv: Move) -> bool {
+        let res = apply_move(self.game, mv);
+        return compare res {
+            nothing => false;
+            Some(g) => {
+                self.game = g;
+                true;
+            };
+        };
+    }
+
+    pub async fn suggest_move(self: &Engine) -> Move? {
+        let mut moves = legal_moves(self.game);
+        return moves.pop();
+    }
+}

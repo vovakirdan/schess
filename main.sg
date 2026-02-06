@@ -1,0 +1,183 @@
+import chess::{
+    initial_game,
+    legal_moves,
+    apply_move,
+    Game,
+    Board,
+    Square,
+    Move,
+    MoveKind,
+    Piece,
+    PieceKind,
+    PieceColor,
+    Color,
+    Kind,
+    Quiet,
+    Capture,
+    Promotion,
+    Castle,
+    EnPassant,
+};
+
+fn color_to_string(c: PieceColor) -> string {
+    if (c == Color::White) {
+        return "white";
+    }
+    return "black";
+}
+
+fn piece_to_string(p: &Piece) -> string {
+    if (p.color == Color::White) {
+        return compare p.kind {
+            Kind::Pawn => "P";
+            Kind::Knight => "N";
+            Kind::Bishop => "B";
+            Kind::Rook => "R";
+            Kind::Queen => "Q";
+            Kind::King => "K";
+            _ => "?";
+        };
+    }
+    return compare p.kind {
+        Kind::Pawn => "p";
+        Kind::Knight => "n";
+        Kind::Bishop => "b";
+        Kind::Rook => "r";
+        Kind::Queen => "q";
+        Kind::King => "k";
+        _ => "?";
+    };
+}
+
+fn board_to_string(board: &Board) -> string {
+    let mut out: string = "";
+    for r in 0..8 {
+        let rank = 7 - r;
+        out = out + ((rank + 1) to string) + " ";
+        for f in 0..8 {
+            let sq = Square { file = f, rank = rank };
+            let cell = board.piece_at(&sq);
+            compare *cell {
+                nothing => {
+                    out = out + ". ";
+                };
+                Some(p) => {
+                    out = out + piece_to_string(&p) + " ";
+                };
+            };
+        }
+        out = out + "\n";
+    }
+    out = out + "  a b c d e f g h";
+    return out;
+}
+
+fn square_to_string(file: int, rank: int) -> string {
+    let files: string[8] = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    let f = files[file].__clone();
+    let r = (rank + 1) to string;
+    return f + r;
+}
+
+fn promo_to_string(k: PieceKind) -> string {
+    return compare k {
+        Kind::Queen => "Q";
+        Kind::Rook => "R";
+        Kind::Bishop => "B";
+        Kind::Knight => "N";
+        _ => "?";
+    };
+}
+
+fn move_kind_sep(kind: &MoveKind) -> string {
+    return compare kind {
+        Quiet() => "-";
+        Capture() => "x";
+        Promotion(k) => "=" + promo_to_string(k);
+        Castle() => "O-O";
+        EnPassant() => "ep";
+    };
+}
+
+fn move_to_string(mv: &Move) -> string {
+    let from = square_to_string(mv.from_square.file, mv.from_square.rank);
+    let dst = square_to_string(mv.to_square.file, mv.to_square.rank);
+    return from + move_kind_sep(mv.kind) + dst;
+}
+
+fn find_move(moves: &Move[], ff: int, fr: int, tf: int, tr: int) -> Move? {
+    let count = moves.__len() to int;
+    let mut i = 0;
+    while i < count {
+        let mv = moves[i];
+        if mv.from_square.file == ff &&
+            mv.from_square.rank == fr &&
+            mv.to_square.file == tf &&
+            mv.to_square.rank == tr {
+            return Some(*mv);
+        }
+        i = i + 1;
+    }
+    return nothing;
+}
+
+fn play_move(game: &Game, ff: int, fr: int, tf: int, tr: int) -> Game? {
+    let moves = legal_moves(game);
+    print("side=" + color_to_string(game.side_to_move) + " legal=" + (moves.__len() to string));
+
+    let want = square_to_string(ff, fr) + "-" + square_to_string(tf, tr);
+    let found = find_move(&moves, ff, fr, tf, tr);
+    return compare found {
+        nothing => {
+            print("script move not found: " + want);
+            nothing;
+        };
+        Some(mv) => {
+            print("move " + move_to_string(&mv));
+            let next = apply_move(game, mv);
+            compare next {
+                nothing => print("apply_move rejected: " + want);
+                _ => {};
+            };
+            next;
+        };
+    };
+}
+
+@entrypoint
+fn main() {
+    let mut game = initial_game();
+
+    print("Initial:");
+    print(board_to_string(&game.board));
+
+    let next1 = play_move(&game, 4, 1, 4, 3); // e2-e4
+    compare next1 {
+        nothing => return;
+        Some(g2) => game = g2;
+    };
+    print(board_to_string(&game.board));
+
+    let next2 = play_move(&game, 4, 6, 4, 4); // e7-e5
+    compare next2 {
+        nothing => return;
+        Some(g2) => game = g2;
+    };
+    print(board_to_string(&game.board));
+
+    let next3 = play_move(&game, 6, 0, 5, 2); // g1-f3
+    compare next3 {
+        nothing => return;
+        Some(g2) => game = g2;
+    };
+    print(board_to_string(&game.board));
+
+    let next4 = play_move(&game, 1, 7, 2, 5); // b8-c6
+    compare next4 {
+        nothing => return;
+        Some(g2) => game = g2;
+    };
+    print(board_to_string(&game.board));
+
+    print("done");
+}

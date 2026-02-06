@@ -1,0 +1,279 @@
+pragma module::chess;
+
+fn in_bounds(file: int, rank: int) -> bool {
+    return file >= 0 && file < 8 && rank >= 0 && rank < 8;
+}
+
+fn make_square(file: int, rank: int) -> Square {
+    return Square { file = file, rank = rank };
+}
+
+fn push_if_ok(
+        board: &Board,
+        moves: &mut Move[],
+        from: &Square,
+        to_file: int,
+        to_rank: int,
+        side: PieceColor
+    ) -> bool {
+    if !in_bounds(to_file, to_rank) {
+        return false;
+    }
+    let to_sq = make_square(to_file, to_rank);
+    let dst = board.piece_at(&to_sq);
+    compare dst {
+        nothing => {
+            let mv = Move {
+                kind = Quiet(),
+                from_square = from,
+                to_square = to_sq,
+            };
+            moves.push(mv);
+            return true;
+        };
+        Some(p) => {
+            if p.color != side {
+                let mv = Move {
+                    kind = Capture(),
+                    from_square = from,
+                    to_square = to_sq,
+                };
+                moves.push(mv);
+                return true;
+            }
+            return false;
+        };
+    };
+    return false;
+}
+
+type Dir = {
+    df: int,
+    dr: int,
+}
+
+let rook_dirs: Dir[] = [
+    Dir { df = 1, dr = 0 },
+    Dir { df = -1, dr = 0 },
+    Dir { df = 0, dr = 1 },
+    Dir { df = 0, dr = -1 },
+];
+
+let bishop_dirs: Dir[] = [
+    Dir { df = 1, dr = 1 },
+    Dir { df = 1, dr = -1 },
+    Dir { df = -1, dr = 1 },
+    Dir { df = -1, dr = -1 },
+];
+
+let queen_dirs: Dir[] = [
+    Dir { df = 1, dr = 0 },
+    Dir { df = -1, dr = 0 },
+    Dir { df = 0, dr = 1 },
+    Dir { df = 0, dr = -1 },
+    Dir { df = 1, dr = 1 },
+    Dir { df = 1, dr = -1 },
+    Dir { df = -1, dr = 1 },
+    Dir { df = -1, dr = -1 },
+];
+
+// all pseudo-legal moves for a piece at a given square without checking for checks
+pub fn pseudo_legal_moves(board: &Board, from: &Square) -> Move[] {
+    let mut moves: Move[] = [];
+    return compare board.piece_at(from) {
+        // if there is no piece at the square, there are no moves
+        nothing => moves;
+        // if there is a piece at the square, generate all pseudo-legal moves for that piece
+        Some(piece) => pseudo_legal_moves_piece(board, from, piece);
+    };
+}
+
+// all pseudo-legal moves for a piece
+pub fn pseudo_legal_moves_piece(board: &Board, from: &Square, piece: &Piece) -> Move[] {
+    let mut moves: Move[] = [];
+    return compare piece.kind {
+        Kind::Pawn => gen_pawn(board, from, piece);
+        Kind::Knight => gen_knight(board, from, piece.color);
+        Kind::Bishop => gen_slider(board, from, piece.color, &bishop_dirs);
+        Kind::Rook => gen_slider(board, from, piece.color, &rook_dirs);
+        Kind::Queen => gen_slider(board, from, piece.color, &queen_dirs);
+        Kind::King => gen_king(board, from, piece.color);
+        _ => moves;
+    };
+    return moves;
+}
+
+fn gen_pawn(board: &Board, from: &Square, piece: &Piece) -> Move[] {
+    let mut moves: Move[] = [];
+    let mut dir = 0;
+    let mut start_rank = 0;
+    let mut promo_rank = 0;
+    if (piece.color == Color::White) {
+        dir = 1;
+        start_rank = 1;
+        promo_rank = 7;
+    } else {
+        dir = -1;
+        start_rank = 6;
+        promo_rank = 0;
+    }
+
+    let promo_kinds: PieceKind[4] = [
+        Kind::Queen,
+        Kind::Rook,
+        Kind::Bishop,
+        Kind::Knight,
+    ];
+
+    // one step forward
+    let one_rank = from.rank + dir;
+    if in_bounds(from.file, one_rank) {
+        let one_sq = make_square(from.file, one_rank);
+        if board.is_empty(&one_sq) {
+            if one_rank == promo_rank {
+                for k in promo_kinds {
+                    let mv = Move {
+                        kind = Promotion(k),
+                        from_square = from,
+                        to_square = one_sq,
+                    };
+                    moves.push(mv);
+                }
+            } else {
+                let mv = Move {
+                    kind = Quiet(),
+                    from_square = from,
+                    to_square = one_sq,
+                };
+                moves.push(mv);
+
+                // two steps forward from start rank
+                if from.rank == start_rank {
+                    let two_rank = from.rank + dir + dir;
+                    if in_bounds(from.file, two_rank) {
+                        let two_sq = make_square(from.file, two_rank);
+                        if board.is_empty(&two_sq) {
+                            let mv2 = Move {
+                                kind = Quiet(),
+                                from_square = from,
+                                to_square = two_sq,
+                            };
+                            moves.push(mv2);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // captures
+    let capture_rank = from.rank + dir;
+    if in_bounds(from.file - 1, capture_rank) {
+        let cap_sq = make_square(from.file - 1, capture_rank);
+        let dst = board.piece_at(&cap_sq);
+        compare dst {
+            nothing => {};
+            Some(p) => {
+                if p.color != piece.color {
+                    if capture_rank == promo_rank {
+                        for k in promo_kinds {
+                            let mv = Move {
+                                kind = Promotion(k),
+                                from_square = from,
+                                to_square = cap_sq,
+                            };
+                            moves.push(mv);
+                        }
+                    } else {
+                        let mv = Move {
+                            kind = Capture(),
+                            from_square = from,
+                            to_square = cap_sq,
+                        };
+                        moves.push(mv);
+                    }
+                }
+            };
+        };
+    }
+    if in_bounds(from.file + 1, capture_rank) {
+        let cap_sq = make_square(from.file + 1, capture_rank);
+        let dst = board.piece_at(&cap_sq);
+        compare dst {
+            nothing => {};
+            Some(p) => {
+                if p.color != piece.color {
+                    if capture_rank == promo_rank {
+                        for k in promo_kinds {
+                            let mv = Move {
+                                kind = Promotion(k),
+                                from_square = from,
+                                to_square = cap_sq,
+                            };
+                            moves.push(mv);
+                        }
+                    } else {
+                        let mv = Move {
+                            kind = Capture(),
+                            from_square = from,
+                            to_square = cap_sq,
+                        };
+                        moves.push(mv);
+                    }
+                }
+            };
+        };
+    }
+    return moves;
+}
+
+fn gen_slider(board: &Board, from: &Square, side: PieceColor, dirs: &Dir[]) -> Move[] {
+    let mut moves: Move[] = [];
+    for d in dirs {
+        let mut f = from.file + d.df;
+        let mut r = from.rank + d.dr;
+        
+        while true {
+            // todo check if moves array sent correctly. Here is no diagnostic. Why?
+            let cont = push_if_ok(board, &mut moves, from, f, r, side);
+            if !cont {
+                break;
+            }
+            f = f + d.df;
+            r = r + d.dr;
+        }
+    }
+    return moves;
+}
+
+fn gen_knight(board: &Board, from: &Square, side: PieceColor) -> Move[] {
+    let mut moves: Move[] = [];
+    
+    let steps: Dir[8] = [
+        Dir { df =  1, dr =  2 }, Dir { df =  2, dr =  1 },
+        Dir { df =  2, dr = -1 }, Dir { df =  1, dr = -2 },
+        Dir { df = -1, dr = -2 }, Dir { df = -2, dr = -1 },
+        Dir { df = -2, dr =  1 }, Dir { df = -1, dr =  2 },
+    ];
+
+    for s in steps {
+        let _ = push_if_ok(board, &mut moves, from, from.file + s.df, from.rank + s.dr, side);
+    }
+    return moves;
+}
+
+fn gen_king(board: &Board, from: &Square, side: PieceColor) -> Move[] {
+    let mut moves: Move[] = [];
+
+    let steps: Dir[8] = [
+        Dir { df =  1, dr =  0 }, Dir { df = -1, dr =  0 },
+        Dir { df =  0, dr =  1 }, Dir { df =  0, dr = -1 },
+        Dir { df =  1, dr =  1 }, Dir { df =  1, dr = -1 },
+        Dir { df = -1, dr =  1 }, Dir { df = -1, dr = -1 },
+    ];
+
+    for s in steps {
+        let _ = push_if_ok(board, &mut moves, from, from.file + s.df, from.rank + s.dr, side);
+    }
+    return moves;
+}

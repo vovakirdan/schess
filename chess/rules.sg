@@ -42,24 +42,6 @@ fn move_eq(a: &Move, b: &Move) -> bool {
         move_kind_eq(a.kind, b.kind);
 }
 
-fn apply_move_to_board(board: &mut Board, mv: &Move, piece: &Piece) -> nothing {
-    let from = mv.from_square;
-    let to_sq = mv.to_square;
-    let cells = &mut board.cells;
-    cells[board_index(from.file, from.rank)] = nothing;
-    compare mv.kind {
-        Promotion(k) => {
-            let promoted = Piece { kind = k, color = piece.color };
-            cells[board_index(to_sq.file, to_sq.rank)] = Some(promoted);
-        };
-        _ => {
-            let moved = Piece { kind = piece.kind, color = piece.color };
-            cells[board_index(to_sq.file, to_sq.rank)] = Some(moved);
-        };
-    };
-    return nothing;
-}
-
 pub fn is_square_attacked(
     board: &Board,
     sq: Square,
@@ -210,15 +192,11 @@ pub fn is_king_in_check(
     return is_square_attacked(board, king_sq, enemy);
 }
 
-pub fn is_legal_move(
-    board: &Board,
-    mv: &Move,
-    side: PieceColor
-) -> bool {
+pub fn is_legal_move(game: &Game, mv: &Move) -> bool {
     let from = mv.from_square;
     let mut piece_val = Piece { kind = Kind::Pawn, color = Color::White };
     let mut has_piece = false;
-    compare board.piece_at(from) {
+    compare game.board.piece_at(from) {
         nothing => {};
         Some(p) => {
             piece_val = Piece { kind = p.kind, color = p.color };
@@ -228,11 +206,11 @@ pub fn is_legal_move(
     if !has_piece {
         return false;
     }
-    if piece_val.color != side {
+    if piece_val.color != game.side_to_move {
         return false;
     }
 
-    let candidates = pseudo_legal_moves_piece(board, from, &piece_val);
+    let candidates = pseudo_legal_moves_piece_game(game, from, &piece_val);
     let mut found = false;
     for cand in candidates {
         if move_eq(&cand, mv) {
@@ -244,7 +222,7 @@ pub fn is_legal_move(
         return false;
     }
 
-    let mut next_board = board_clone(board);
+    let mut next_board = board_clone(game.board);
     apply_move_to_board(&mut next_board, mv, &piece_val);
-    return !is_king_in_check(&next_board, side);
+    return !is_king_in_check(&next_board, game.side_to_move);
 }

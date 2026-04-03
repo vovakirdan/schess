@@ -1,0 +1,117 @@
+pragma module::chess;
+
+pub type CastlingRights = {
+    white_king_side: bool,
+    white_queen_side: bool,
+    black_king_side: bool,
+    black_queen_side: bool,
+}
+
+fn initial_castling_rights() -> CastlingRights {
+    return CastlingRights {
+        white_king_side = true,
+        white_queen_side = true,
+        black_king_side = true,
+        black_queen_side = true,
+    };
+}
+
+fn square_eq(a: &Square, b: &Square) -> bool {
+    return a.file == b.file && a.rank == b.rank;
+}
+
+fn home_king_square(side: PieceColor) -> Square {
+    if (side == Color::White) {
+        return make_square(4, 0);
+    }
+    return make_square(4, 7);
+}
+
+fn home_rook_square(side: PieceColor, king_side: bool) -> Square {
+    if (side == Color::White) {
+        if king_side {
+            return make_square(7, 0);
+        }
+        return make_square(0, 0);
+    }
+    if king_side {
+        return make_square(7, 7);
+    }
+    return make_square(0, 7);
+}
+
+fn castle_target_square(side: PieceColor, king_side: bool) -> Square {
+    if (side == Color::White) {
+        if king_side {
+            return make_square(6, 0);
+        }
+        return make_square(2, 0);
+    }
+    if king_side {
+        return make_square(6, 7);
+    }
+    return make_square(2, 7);
+}
+
+fn castling_right_enabled(rights: &CastlingRights, side: PieceColor, king_side: bool) -> bool {
+    if (side == Color::White) {
+        if king_side {
+            return rights.white_king_side;
+        }
+        return rights.white_queen_side;
+    }
+    if king_side {
+        return rights.black_king_side;
+    }
+    return rights.black_queen_side;
+}
+
+fn clear_castling_for_side(rights: &CastlingRights, side: PieceColor) -> CastlingRights {
+    if (side == Color::White) {
+        return CastlingRights {
+            white_king_side = false,
+            white_queen_side = false,
+            black_king_side = rights.black_king_side,
+            black_queen_side = rights.black_queen_side,
+        };
+    }
+    return CastlingRights {
+        white_king_side = rights.white_king_side,
+        white_queen_side = rights.white_queen_side,
+        black_king_side = false,
+        black_queen_side = false,
+    };
+}
+
+fn clear_castling_rook(rights: &CastlingRights, side: PieceColor, king_side: bool) -> CastlingRights {
+    if (side == Color::White) {
+        if king_side {
+            return CastlingRights {
+                white_king_side = false,
+                white_queen_side = rights.white_queen_side,
+                black_king_side = rights.black_king_side,
+                black_queen_side = rights.black_queen_side,
+            };
+        }
+        return CastlingRights {
+            white_king_side = rights.white_king_side,
+            white_queen_side = false,
+            black_king_side = rights.black_king_side,
+            black_queen_side = rights.black_queen_side,
+        };
+    }
+    if king_side {
+        return CastlingRights {
+            white_king_side = rights.white_king_side,
+            white_queen_side = rights.white_queen_side,
+            black_king_side = false,
+            black_queen_side = rights.black_queen_side,
+        };
+    }
+    return CastlingRights {
+        white_king_side = rights.white_king_side,
+        white_queen_side = rights.white_queen_side,
+        black_king_side = rights.black_king_side,
+        black_queen_side = false,
+    };
+}

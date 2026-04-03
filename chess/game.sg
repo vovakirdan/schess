@@ -3,6 +3,10 @@ pragma module::chess;
 pub type Game = {
     board: Board,
     side_to_move: PieceColor,
+    castling: CastlingRights,
+    en_passant_target: Square?,
+    halfmove_clock: int,
+    fullmove_number: int,
 }
 
 pub fn initial_game() -> Game {
@@ -34,7 +38,14 @@ pub fn initial_game() -> Game {
         board.set_piece(&b_sq, Some(Piece { kind = kind, color = Color::Black }));
     }
 
-    return Game { board = board, side_to_move = Color::White };
+    return Game {
+        board = board,
+        side_to_move = Color::White,
+        castling = initial_castling_rights(),
+        en_passant_target = nothing,
+        halfmove_clock = 0,
+        fullmove_number = 1,
+    };
 }
 
 pub fn legal_moves(game: &Game) -> Move[] {
@@ -47,9 +58,9 @@ pub fn legal_moves(game: &Game) -> Move[] {
                 nothing => {};
                 Some(p) => {
                     if (p.color == game.side_to_move) {
-                        let candidates = pseudo_legal_moves_piece(game.board, &sq, p);
+                        let candidates = pseudo_legal_moves_piece_game(game, &sq, p);
                         for mv in candidates {
-                            if is_legal_move(game.board, mv, game.side_to_move) {
+                            if is_legal_move(game, &mv) {
                                 moves.push(mv);
                             }
                         }
@@ -62,7 +73,7 @@ pub fn legal_moves(game: &Game) -> Move[] {
 }
 
 pub fn apply_move(game: &Game, mv: Move) -> Game? {
-    if !is_legal_move(game.board, &mv, game.side_to_move) {
+    if !is_legal_move(game, &mv) {
         return nothing;
     }
 
@@ -81,7 +92,15 @@ pub fn apply_move(game: &Game, mv: Move) -> Game? {
     }
 
     let mut next_board = board_clone(game.board);
+    let captured_sq = move_capture_square(game.board, &mv, &piece_val);
     apply_move_to_board(&mut next_board, &mv, &piece_val);
     let next_side = opposite_color(game.side_to_move);
-    return Some(Game { board = next_board, side_to_move = next_side });
+    return Some(Game {
+        board = next_board,
+        side_to_move = next_side,
+        castling = next_castling_rights(game.castling, &piece_val, &mv, captured_sq),
+        en_passant_target = next_en_passant_target(&piece_val, &mv),
+        halfmove_clock = next_halfmove_clock(game.halfmove_clock, game.board, &mv, &piece_val),
+        fullmove_number = next_fullmove_number(game.fullmove_number, game.side_to_move),
+    });
 }

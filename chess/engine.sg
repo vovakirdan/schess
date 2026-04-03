@@ -15,7 +15,7 @@ extern<Engine> {
             nothing => false;
             Some(g) => {
                 self.game = g;
-                true;
+                ret true;
             };
         };
     }

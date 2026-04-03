@@ -1,0 +1,236 @@
+pragma module::chess;
+
+pub fn pseudo_legal_moves_piece_game(game: &Game, from: &Square, piece: &Piece) -> Move[] {
+    let mut moves = pseudo_legal_moves_piece(game.board, from, piece);
+    if (piece.kind == Kind::Pawn) {
+        gen_en_passant(game, &mut moves, from, piece);
+    }
+    if (piece.kind == Kind::King) {
+        gen_castling(game, &mut moves, from, piece.color);
+    }
+    return moves;
+}
+
+fn gen_en_passant(game: &Game, moves: &mut Move[], from: &Square, piece: &Piece) -> nothing {
+    compare game.en_passant_target {
+        nothing => {};
+        Some(target) => {
+            let mut dir = -1;
+            if (piece.color == Color::White) {
+                dir = 1;
+            }
+            if target.rank != from.rank + dir {
+                return nothing;
+            }
+            let file_delta = target.file - from.file;
+            if file_delta != -1 && file_delta != 1 {
+                return nothing;
+            }
+            if !game.board.is_empty(target) {
+                return nothing;
+            }
+            let captured = make_square(target.file, from.rank);
+            compare game.board.piece_at(&captured) {
+                nothing => {};
+                Some(p) => {
+                    if (p.color != piece.color) {
+                        if (p.kind == Kind::Pawn) {
+                            let target_sq = *target;
+                            let mv = Move {
+                                kind = EnPassant(),
+                                from_square = from,
+                                to_square = target_sq,
+                            };
+                            moves.push(mv);
+                        }
+                    }
+                };
+            };
+        };
+    };
+    return nothing;
+}
+
+fn gen_castling(game: &Game, moves: &mut Move[], from: &Square, side: PieceColor) -> nothing {
+    let home_sq = home_king_square(side);
+    if !square_eq(from, &home_sq) {
+        return nothing;
+    }
+    if is_king_in_check(game.board, side) {
+        return nothing;
+    }
+    gen_castle_side(game, moves, side, true);
+    gen_castle_side(game, moves, side, false);
+    return nothing;
+}
+
+fn gen_castle_side(game: &Game, moves: &mut Move[], side: PieceColor, king_side: bool) -> nothing {
+    if !castling_right_enabled(game.castling, side, king_side) {
+        return nothing;
+    }
+
+    let rook_sq = home_rook_square(side, king_side);
+    if !is_piece_at(game.board, rook_sq.file, rook_sq.rank, side, Kind::Rook) {
+        return nothing;
+    }
+
+    let rank = rook_sq.rank;
+    if king_side {
+        let f1 = make_square(5, rank);
+        let g1 = make_square(6, rank);
+        if !game.board.is_empty(&f1) || !game.board.is_empty(&g1) {
+            return nothing;
+        }
+        let enemy = opposite_color(side);
+        if is_square_attacked(game.board, f1, enemy) || is_square_attacked(game.board, g1, enemy) {
+            return nothing;
+        }
+    } else {
+        let b1 = make_square(1, rank);
+        let c1 = make_square(2, rank);
+        let d1 = make_square(3, rank);
+        if !game.board.is_empty(&b1) || !game.board.is_empty(&c1) || !game.board.is_empty(&d1) {
+            return nothing;
+        }
+        let enemy = opposite_color(side);
+        if is_square_attacked(game.board, c1, enemy) || is_square_attacked(game.board, d1, enemy) {
+            return nothing;
+        }
+    }
+
+    moves.push(Move {
+        kind = Castle(),
+        from_square = home_king_square(side),
+        to_square = castle_target_square(side, king_side),
+    });
+    return nothing;
+}
+
+fn move_capture_square(board: &Board, mv: &Move, piece: &Piece) -> Square? {
+    compare mv.kind {
+        EnPassant() => {
+            let mut captured_rank = mv.to_square.rank + 1;
+            if (piece.color == Color::White) {
+                captured_rank = mv.to_square.rank - 1;
+            }
+            return Some(make_square(mv.to_square.file, captured_rank));
+        };
+        _ => {};
+    };
+    if board.is_empty(mv.to_square) {
+        return nothing;
+    }
+    return Some(*mv.to_square);
+}
+
+fn apply_move_to_board(board: &mut Board, mv: &Move, piece: &Piece) -> nothing {
+    let from = *mv.from_square;
+    let to_sq = *mv.to_square;
+    board.set_piece(&from, nothing);
+
+    compare mv.kind {
+        EnPassant() => {
+            let mut captured_rank = to_sq.rank + 1;
+            if (piece.color == Color::White) {
+                captured_rank = to_sq.rank - 1;
+            }
+            let captured_sq = make_square(to_sq.file, captured_rank);
+            board.set_piece(&captured_sq, nothing);
+            board.set_piece(&to_sq, Some(Piece { kind = piece.kind, color = piece.color }));
+        };
+        Castle() => {
+            board.set_piece(&to_sq, Some(Piece { kind = piece.kind, color = piece.color }));
+            let king_side = to_sq.file == 6;
+            let rook_from = home_rook_square(piece.color, king_side);
+            let mut rook_to = make_square(3, to_sq.rank);
+            if king_side {
+                rook_to = make_square(5, to_sq.rank);
+            }
+            board.set_piece(&rook_from, nothing);
+            board.set_piece(&rook_to, Some(Piece { kind = Kind::Rook, color = piece.color }));
+        };
+        Promotion(k) => {
+            board.set_piece(&to_sq, Some(Piece { kind = k, color = piece.color }));
+        };
+        _ => {
+            board.set_piece(&to_sq, Some(Piece { kind = piece.kind, color = piece.color }));
+        };
+    };
+    return nothing;
+}
+
+fn next_en_passant_target(piece: &Piece, mv: &Move) -> Square? {
+    if (piece.kind != Kind::Pawn) {
+        return nothing;
+    }
+    if (mv.from_square.file != mv.to_square.file) {
+        return nothing;
+    }
+    let rank_delta = mv.to_square.rank - mv.from_square.rank;
+    if (rank_delta != 2 && rank_delta != -2) {
+        return nothing;
+    }
+    return Some(make_square(mv.from_square.file, (mv.from_square.rank + mv.to_square.rank) / 2));
+}
+
+fn next_halfmove_clock(current: int, board: &Board, mv: &Move, piece: &Piece) -> int {
+    if (piece.kind == Kind::Pawn) {
+        return 0;
+    }
+    return compare move_capture_square(board, mv, piece) {
+        nothing => current + 1;
+        Some(_) => 0;
+    };
+}
+
+fn next_fullmove_number(current: int, side: PieceColor) -> int {
+    if (side == Color::Black) {
+        return current + 1;
+    }
+    return current;
+}
+
+fn next_castling_rights(
+    rights: &CastlingRights,
+    piece: &Piece,
+    mv: &Move,
+    captured_sq: Square?
+) -> CastlingRights {
+    let mut next = CastlingRights {
+        white_king_side = rights.white_king_side,
+        white_queen_side = rights.white_queen_side,
+        black_king_side = rights.black_king_side,
+        black_queen_side = rights.black_queen_side,
+    };
+
+    if (piece.kind == Kind::King) {
+        next = clear_castling_for_side(&next, piece.color);
+    }
+    if (piece.kind == Kind::Rook) {
+        let own_king_rook = home_rook_square(piece.color, true);
+        let own_queen_rook = home_rook_square(piece.color, false);
+        if square_eq(mv.from_square, &own_king_rook) {
+            next = clear_castling_rook(&next, piece.color, true);
+        }
+        if square_eq(mv.from_square, &own_queen_rook) {
+            next = clear_castling_rook(&next, piece.color, false);
+        }
+    }
+
+    compare captured_sq {
+        nothing => {};
+        Some(sq) => {
+            let enemy = opposite_color(piece.color);
+            let enemy_king_rook = home_rook_square(enemy, true);
+            let enemy_queen_rook = home_rook_square(enemy, false);
+            if square_eq(&sq, &enemy_king_rook) {
+                next = clear_castling_rook(&next, enemy, true);
+            }
+            if square_eq(&sq, &enemy_queen_rook) {
+                next = clear_castling_rook(&next, enemy, false);
+            }
+        };
+    };
+
+    return next;
+}

@@ -130,16 +130,18 @@ fn play_move(game: &Game, ff: int, fr: int, tf: int, tr: int) -> Game? {
     return compare found {
         nothing => {
             print("script move not found: " + want);
-            nothing;
+            ret nothing;
         };
         Some(mv) => {
             print("move " + move_to_string(&mv));
             let next = apply_move(game, mv);
-            compare next {
+            let next_ref = &next;
+            compare next_ref {
                 nothing => print("apply_move rejected: " + want);
                 _ => {};
             };
-            next;
+            @drop next_ref;
+            ret next;
         };
     };
 }

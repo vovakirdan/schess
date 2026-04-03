@@ -1,0 +1,180 @@
+import ../chess::{
+    initial_game,
+    legal_moves,
+    apply_move,
+    Game,
+    Board,
+    Square,
+    Move,
+    PieceKind,
+    PieceColor,
+    Color,
+    Kind,
+    Quiet,
+    Castle,
+    EnPassant,
+};
+
+fn assert(cond: bool, msg: string) -> nothing {
+    if !cond {
+        panic(msg);
+    }
+    return nothing;
+}
+
+fn find_move(moves: &Move[], ff: int, fr: int, tf: int, tr: int) -> Move? {
+    let count = moves.__len() to int;
+    let mut i = 0;
+    while i < count {
+        let mv = moves[i];
+        if mv.from_square.file == ff &&
+            mv.from_square.rank == fr &&
+            mv.to_square.file == tf &&
+            mv.to_square.rank == tr {
+            return Some(*mv);
+        }
+        i = i + 1;
+    }
+    return nothing;
+}
+
+fn require_move(game: &Game, ff: int, fr: int, tf: int, tr: int, msg: string) -> Move {
+    let moves = legal_moves(game);
+    return compare find_move(&moves, ff, fr, tf, tr) {
+        nothing => {
+            panic(msg);
+            ret Move {
+                kind = Quiet(),
+                from_square = Square { file = 0, rank = 0 },
+                to_square = Square { file = 0, rank = 0 },
+            };
+        };
+        Some(mv) => mv;
+    };
+}
+
+fn apply_required(game: &Game, mv: Move, msg: string) -> Game {
+    let next = apply_move(game, mv);
+    return compare next {
+        nothing => {
+            panic(msg);
+            ret initial_game();
+        };
+        Some(g) => g;
+    };
+}
+
+fn play(game: &Game, ff: int, fr: int, tf: int, tr: int, msg: string) -> Game {
+    let mv = require_move(game, ff, fr, tf, tr, msg.__clone());
+    return apply_required(game, mv, msg);
+}
+
+fn move_is_castle(mv: &Move) -> bool {
+    return compare mv.kind {
+        Castle() => true;
+        _ => false;
+    };
+}
+
+fn move_is_en_passant(mv: &Move) -> bool {
+    return compare mv.kind {
+        EnPassant() => true;
+        _ => false;
+    };
+}
+
+fn assert_empty(board: &Board, file: int, rank: int, msg: string) -> nothing {
+    let sq = Square { file = file, rank = rank };
+    if !board.is_empty(&sq) {
+        panic(msg);
+    }
+    return nothing;
+}
+
+fn assert_piece(board: &Board, file: int, rank: int, kind: PieceKind, color: PieceColor, msg: string) -> nothing {
+    let sq = Square { file = file, rank = rank };
+    compare board.piece_at(&sq) {
+        nothing => panic(msg);
+        Some(p) => {
+            if (p.kind != kind || p.color != color) {
+                panic(msg);
+            }
+        };
+    };
+    return nothing;
+}
+
+fn assert_ep_target(game: &Game, file: int, rank: int, msg: string) -> nothing {
+    compare game.en_passant_target {
+        nothing => panic(msg);
+        Some(sq) => {
+            if (sq.file != file || sq.rank != rank) {
+                panic(msg);
+            }
+        };
+    };
+    return nothing;
+}
+
+fn assert_no_ep_target(game: &Game, msg: string) -> nothing {
+    compare game.en_passant_target {
+        nothing => {};
+        Some(_) => panic(msg);
+    };
+    return nothing;
+}
+
+fn test_white_king_side_castle() -> nothing {
+    let mut game = initial_game();
+    game = play(&game, 4, 1, 4, 3, "missing e2-e4");
+    game = play(&game, 4, 6, 4, 4, "missing e7-e5");
+    game = play(&game, 6, 0, 5, 2, "missing g1-f3");
+    game = play(&game, 1, 7, 2, 5, "missing b8-c6");
+    game = play(&game, 5, 0, 2, 3, "missing f1-c4");
+    game = play(&game, 6, 7, 5, 5, "missing g8-f6");
+
+    let castle_mv = require_move(&game, 4, 0, 6, 0, "missing white king-side castle");
+    assert(move_is_castle(&castle_mv), "castle move kind mismatch");
+
+    game = apply_required(&game, castle_mv, "castle apply failed");
+    assert_piece(&game.board, 6, 0, Kind::King, Color::White, "white king must be on g1");
+    assert_piece(&game.board, 5, 0, Kind::Rook, Color::White, "white rook must be on f1");
+    assert_empty(&game.board, 4, 0, "e1 must be empty after castling");
+    assert_empty(&game.board, 7, 0, "h1 must be empty after castling");
+    assert(!game.castling.white_king_side, "white king-side rights must be cleared");
+    assert(!game.castling.white_queen_side, "white queen-side rights must be cleared");
+    assert(game.castling.black_king_side, "black king-side rights must remain");
+    assert(game.castling.black_queen_side, "black queen-side rights must remain");
+    return nothing;
+}
+
+fn test_en_passant() -> nothing {
+    let mut game = initial_game();
+    game = play(&game, 4, 1, 4, 3, "missing e2-e4");
+    assert_ep_target(&game, 4, 2, "e2-e4 must set ep target to e3");
+
+    game = play(&game, 0, 6, 0, 5, "missing a7-a6");
+    assert_no_ep_target(&game, "single pawn push must clear ep target");
+
+    game = play(&game, 4, 3, 4, 4, "missing e4-e5");
+    game = play(&game, 3, 6, 3, 4, "missing d7-d5");
+    assert_ep_target(&game, 3, 5, "d7-d5 must set ep target to d6");
+
+    let ep_mv = require_move(&game, 4, 4, 3, 5, "missing en passant e5xd6");
+    assert(move_is_en_passant(&ep_mv), "en passant move kind mismatch");
+
+    game = apply_required(&game, ep_mv, "en passant apply failed");
+    assert_piece(&game.board, 3, 5, Kind::Pawn, Color::White, "white pawn must land on d6");
+    assert_empty(&game.board, 3, 4, "captured pawn must be removed from d5");
+    assert_empty(&game.board, 4, 4, "e5 must be empty after en passant");
+    assert_no_ep_target(&game, "en passant must clear ep target");
+    assert(game.halfmove_clock == 0, "en passant must reset halfmove clock");
+    return nothing;
+}
+
+@entrypoint
+fn main() {
+    test_white_king_side_castle();
+    test_en_passant();
+    print("regression ok");
+}

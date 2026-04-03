@@ -2,15 +2,23 @@ import ../chess::{
     initial_game,
     legal_moves,
     apply_move,
+    evaluate_game_status,
     Game,
+    GameStatus,
     Board,
     Square,
     Move,
+    Piece,
     PieceKind,
     PieceColor,
+    CastlingRights,
     Color,
     Kind,
     Quiet,
+    Ongoing,
+    Check,
+    Checkmate,
+    Stalemate,
     Castle,
     EnPassant,
 };
@@ -124,8 +132,41 @@ fn assert_no_ep_target(game: &Game, msg: string) -> nothing {
     return nothing;
 }
 
+fn assert_status(status: &GameStatus, expected: string, msg: string) -> nothing {
+    let actual = compare status {
+        Ongoing() => "ongoing";
+        Check() => "check";
+        Checkmate() => "checkmate";
+        Stalemate() => "stalemate";
+    };
+    if actual != expected {
+        panic(msg);
+    }
+    return nothing;
+}
+
+fn make_empty_game(board: Board, side: PieceColor) -> Game {
+    let mut game = Game {
+        board = board,
+        side_to_move = side,
+        castling = CastlingRights {
+            white_king_side = false,
+            white_queen_side = false,
+            black_king_side = false,
+            black_queen_side = false,
+        },
+        en_passant_target = nothing,
+        halfmove_clock = 0,
+        fullmove_number = 1,
+        status = Ongoing(),
+    };
+    game.status = evaluate_game_status(&game);
+    return game;
+}
+
 fn test_white_king_side_castle() -> nothing {
     let mut game = initial_game();
+    assert_status(&game.status, "ongoing", "initial game must be ongoing");
     game = play(&game, 4, 1, 4, 3, "missing e2-e4");
     game = play(&game, 4, 6, 4, 4, "missing e7-e5");
     game = play(&game, 6, 0, 5, 2, "missing g1-f3");
@@ -145,6 +186,7 @@ fn test_white_king_side_castle() -> nothing {
     assert(!game.castling.white_queen_side, "white queen-side rights must be cleared");
     assert(game.castling.black_king_side, "black king-side rights must remain");
     assert(game.castling.black_queen_side, "black queen-side rights must remain");
+    assert_status(&game.status, "ongoing", "castled position must remain ongoing");
     return nothing;
 }
 
@@ -169,6 +211,36 @@ fn test_en_passant() -> nothing {
     assert_empty(&game.board, 4, 4, "e5 must be empty after en passant");
     assert_no_ep_target(&game, "en passant must clear ep target");
     assert(game.halfmove_clock == 0, "en passant must reset halfmove clock");
+    assert_status(&game.status, "ongoing", "en passant position must remain ongoing");
+    return nothing;
+}
+
+fn test_fools_mate_checkmate() -> nothing {
+    let mut game = initial_game();
+    game = play(&game, 5, 1, 5, 2, "missing f2-f3");
+    game = play(&game, 4, 6, 4, 4, "missing e7-e5");
+    game = play(&game, 6, 1, 6, 3, "missing g2-g4");
+    game = play(&game, 3, 7, 7, 3, "missing Qd8-h4");
+
+    assert_status(&game.status, "checkmate", "fool's mate must be checkmate");
+    let moves = legal_moves(&game);
+    assert(moves.__len() == 0:uint, "checkmated side must have no legal moves");
+    return nothing;
+}
+
+fn test_manual_stalemate() -> nothing {
+    let mut board = Board::new();
+    let white_king = Square { file = 7, rank = 0 };
+    let black_king = Square { file = 5, rank = 1 };
+    let black_queen = Square { file = 6, rank = 2 };
+    board.set_piece(&white_king, Some(Piece { kind = Kind::King, color = Color::White }));
+    board.set_piece(&black_king, Some(Piece { kind = Kind::King, color = Color::Black }));
+    board.set_piece(&black_queen, Some(Piece { kind = Kind::Queen, color = Color::Black }));
+
+    let game = make_empty_game(board, Color::White);
+    assert_status(&game.status, "stalemate", "manual position must be stalemate");
+    let moves = legal_moves(&game);
+    assert(moves.__len() == 0:uint, "stalemate side must have no legal moves");
     return nothing;
 }
 
@@ -176,5 +248,7 @@ fn test_en_passant() -> nothing {
 fn main() {
     test_white_king_side_castle();
     test_en_passant();
+    test_fools_mate_checkmate();
+    test_manual_stalemate();
     print("regression ok");
 }

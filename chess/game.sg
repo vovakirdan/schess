@@ -7,6 +7,7 @@ pub type Game = {
     en_passant_target: Square?,
     halfmove_clock: int,
     fullmove_number: int,
+    status: GameStatus,
 }
 
 pub fn initial_game() -> Game {
@@ -45,6 +46,7 @@ pub fn initial_game() -> Game {
         en_passant_target = nothing,
         halfmove_clock = 0,
         fullmove_number = 1,
+        status = Ongoing(),
     };
 }
 
@@ -95,12 +97,15 @@ pub fn apply_move(game: &Game, mv: Move) -> Game? {
     let captured_sq = move_capture_square(game.board, &mv, &piece_val);
     apply_move_to_board(&mut next_board, &mv, &piece_val);
     let next_side = opposite_color(game.side_to_move);
-    return Some(Game {
+    let mut next = Game {
         board = next_board,
         side_to_move = next_side,
         castling = next_castling_rights(game.castling, &piece_val, &mv, captured_sq),
         en_passant_target = next_en_passant_target(&piece_val, &mv),
         halfmove_clock = next_halfmove_clock(game.halfmove_clock, game.board, &mv, &piece_val),
         fullmove_number = next_fullmove_number(game.fullmove_number, game.side_to_move),
-    });
+        status = Ongoing(),
+    };
+    next.status = evaluate_game_status(&next);
+    return Some(next);
 }

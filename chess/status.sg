@@ -1,0 +1,22 @@
+pragma module::chess;
+
+pub tag Ongoing();
+pub tag Check();
+pub tag Checkmate();
+pub tag Stalemate();
+
+pub type GameStatus = Ongoing() | Check() | Checkmate() | Stalemate();
+
+pub fn evaluate_game_status(game: &Game) -> GameStatus {
+    let moves = legal_moves(game);
+    if (moves.__len() == 0:uint) {
+        if is_king_in_check(game.board, game.side_to_move) {
+            return Checkmate();
+        }
+        return Stalemate();
+    }
+    if is_king_in_check(game.board, game.side_to_move) {
+        return Check();
+    }
+    return Ongoing();
+}

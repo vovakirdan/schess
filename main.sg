@@ -7,6 +7,7 @@ import chess::{
     Square,
     Move,
     MoveKind,
+    GameStatus,
     Piece,
     PieceKind,
     PieceColor,
@@ -17,6 +18,10 @@ import chess::{
     Promotion,
     Castle,
     EnPassant,
+    Ongoing,
+    Check,
+    Checkmate,
+    Stalemate,
 };
 
 fn color_to_string(c: PieceColor) -> string {
@@ -24,6 +29,15 @@ fn color_to_string(c: PieceColor) -> string {
         return "white";
     }
     return "black";
+}
+
+fn status_to_string(status: &GameStatus) -> string {
+    return compare status {
+        Ongoing() => "ongoing";
+        Check() => "check";
+        Checkmate() => "checkmate";
+        Stalemate() => "stalemate";
+    };
 }
 
 fn piece_to_string(p: &Piece) -> string {
@@ -152,6 +166,7 @@ fn main() {
 
     print("Initial:");
     print(board_to_string(&game.board));
+    print("status=" + status_to_string(&game.status));
 
     let next1 = play_move(&game, 4, 1, 4, 3); // e2-e4
     compare next1 {
@@ -159,6 +174,7 @@ fn main() {
         Some(g2) => game = g2;
     };
     print(board_to_string(&game.board));
+    print("status=" + status_to_string(&game.status));
 
     let next2 = play_move(&game, 4, 6, 4, 4); // e7-e5
     compare next2 {
@@ -166,6 +182,7 @@ fn main() {
         Some(g2) => game = g2;
     };
     print(board_to_string(&game.board));
+    print("status=" + status_to_string(&game.status));
 
     let next3 = play_move(&game, 6, 0, 5, 2); // g1-f3
     compare next3 {
@@ -173,6 +190,7 @@ fn main() {
         Some(g2) => game = g2;
     };
     print(board_to_string(&game.board));
+    print("status=" + status_to_string(&game.status));
 
     let next4 = play_move(&game, 1, 7, 2, 5); // b8-c6
     compare next4 {
@@ -180,6 +198,7 @@ fn main() {
         Some(g2) => game = g2;
     };
     print(board_to_string(&game.board));
+    print("status=" + status_to_string(&game.status));
 
     print("done");
 }

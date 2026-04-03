@@ -9,6 +9,15 @@ extern<Engine> {
         return legal_moves(self.game);
     }
 
+    pub async fn status(self: &Engine) -> GameStatus {
+        return compare self.game.status {
+            Ongoing() => Ongoing();
+            Check() => Check();
+            Checkmate() => Checkmate();
+            Stalemate() => Stalemate();
+        };
+    }
+
     pub async fn make_move(self: &mut Engine, mv: Move) -> bool {
         let res = apply_move(self.game, mv);
         return compare res {

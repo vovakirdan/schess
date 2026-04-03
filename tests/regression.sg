@@ -3,8 +3,10 @@ import ../chess::{
     legal_moves,
     apply_move,
     evaluate_game_status,
+    perft,
     Game,
     GameStatus,
+    Engine,
     Board,
     Square,
     Move,
@@ -244,11 +246,45 @@ fn test_manual_stalemate() -> nothing {
     return nothing;
 }
 
+fn test_start_position_perft() -> nothing {
+    let game = initial_game();
+    assert(perft(&game, 1) == 20, "start position perft(1) must be 20");
+    assert(perft(&game, 2) == 400, "start position perft(2) must be 400");
+    return nothing;
+}
+
+async fn test_engine_finds_mate() -> nothing {
+    let mut game = initial_game();
+    game = play(&game, 5, 1, 5, 2, "missing f2-f3");
+    game = play(&game, 4, 6, 4, 4, "missing e7-e5");
+    game = play(&game, 6, 1, 6, 3, "missing g2-g4");
+
+    let engine = Engine { game = game };
+    compare engine.suggest_move_depth(1).await() {
+        Success(found) => {
+            compare found {
+                nothing => panic("engine did not return a move");
+                Some(mv) => {
+                    assert(mv.from_square.file == 3 && mv.from_square.rank == 7, "engine must choose queen from d8");
+                    assert(mv.to_square.file == 7 && mv.to_square.rank == 3, "engine must find Qh4 mate");
+                };
+            };
+        };
+        Cancelled() => panic("engine suggest_move was cancelled");
+    };
+    return nothing;
+}
+
 @entrypoint
 fn main() {
     test_white_king_side_castle();
     test_en_passant();
     test_fools_mate_checkmate();
     test_manual_stalemate();
+    test_start_position_perft();
+    compare test_engine_finds_mate().await() {
+        Success(_) => {};
+        Cancelled() => panic("engine mate test cancelled");
+    };
     print("regression ok");
 }

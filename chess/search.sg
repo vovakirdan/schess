@@ -1,0 +1,260 @@
+pragma module::chess;
+
+type SearchResult = {
+    score: int,
+    mv: Move,
+}
+
+let eval_infinity = 100000000;
+let eval_mate = 100000;
+let default_search_depth = 3;
+
+fn normalize_search_depth(depth: int) -> int {
+    if depth <= 0 {
+        return 1;
+    }
+    return depth;
+}
+
+fn copy_move_kind(kind: &MoveKind) -> MoveKind {
+    return compare kind {
+        Quiet() => Quiet();
+        Capture() => Capture();
+        Promotion(k) => Promotion(k);
+        Castle() => Castle();
+        EnPassant() => EnPassant();
+    };
+}
+
+fn copy_move(mv: &Move) -> Move {
+    return Move {
+        kind = copy_move_kind(mv.kind),
+        from_square = *mv.from_square,
+        to_square = *mv.to_square,
+    };
+}
+
+fn copy_status(status: &GameStatus) -> GameStatus {
+    return compare status {
+        Ongoing() => Ongoing();
+        Check() => Check();
+        Checkmate() => Checkmate();
+        Stalemate() => Stalemate();
+    };
+}
+
+fn copy_castling(rights: &CastlingRights) -> CastlingRights {
+    return CastlingRights {
+        white_king_side = rights.white_king_side,
+        white_queen_side = rights.white_queen_side,
+        black_king_side = rights.black_king_side,
+        black_queen_side = rights.black_queen_side,
+    };
+}
+
+fn copy_square_option(sq: &Square?) -> Square? {
+    return compare sq {
+        nothing => nothing;
+        Some(v) => Some(*v);
+    };
+}
+
+fn copy_game(game: &Game) -> Game {
+    return Game {
+        board = board_clone(game.board),
+        side_to_move = game.side_to_move,
+        castling = copy_castling(game.castling),
+        en_passant_target = copy_square_option(game.en_passant_target),
+        halfmove_clock = game.halfmove_clock,
+        fullmove_number = game.fullmove_number,
+        status = copy_status(game.status),
+    };
+}
+
+fn piece_score(kind: PieceKind) -> int {
+    return compare kind {
+        Kind::Pawn => 100;
+        Kind::Knight => 320;
+        Kind::Bishop => 330;
+        Kind::Rook => 500;
+        Kind::Queen => 900;
+        Kind::King => 0;
+        _ => 0;
+    };
+}
+
+fn material_balance(board: &Board) -> int {
+    let mut score = 0;
+    for rank in 0..8 {
+        for file in 0..8 {
+            let sq = make_square(file, rank);
+            compare board.piece_at(&sq) {
+                nothing => {};
+                Some(p) => {
+                    let value = piece_score(p.kind);
+                    if (p.color == Color::White) {
+                        score = score + value;
+                    } else {
+                        score = score - value;
+                    }
+                };
+            };
+        }
+    }
+    return score;
+}
+
+fn status_score(game: &Game, ply: int) -> int? {
+    return compare game.status {
+        Checkmate() => Some(-eval_mate + ply);
+        Stalemate() => Some(0);
+        _ => nothing;
+    };
+}
+
+fn static_eval(game: &Game) -> int {
+    let material = material_balance(game.board);
+    let mut score = material;
+    if (game.side_to_move == Color::Black) {
+        score = -score;
+    }
+    return compare game.status {
+        Check() => score - 25;
+        _ => score;
+    };
+}
+
+fn negamax(game: &Game, depth: int, alpha: int, beta: int, ply: int) -> int {
+    let terminal = status_score(game, ply);
+    compare terminal {
+        Some(value) => return value;
+        nothing => {};
+    };
+    if depth <= 0 {
+        return static_eval(game);
+    }
+
+    let moves = legal_moves(game);
+    if (moves.__len() == 0:uint) {
+        return static_eval(game);
+    }
+
+    let mut best = -eval_infinity;
+    let mut a = alpha;
+    let count = moves.__len() to int;
+    let mut i = 0;
+    while i < count {
+        let mv_ref = moves[i];
+        let mv = copy_move(mv_ref);
+        let next = apply_move(game, mv);
+        compare next {
+            nothing => {};
+            Some(next_game) => {
+                let score = -negamax(&next_game, depth - 1, -beta, -a, ply + 1);
+                if score > best {
+                    best = score;
+                }
+                if score > a {
+                    a = score;
+                }
+                if a >= beta {
+                    break;
+                }
+            };
+        };
+        i = i + 1;
+    }
+    return best;
+}
+
+async fn score_root_task(next_game: Game, mv: Move, depth: int) -> SearchResult {
+    let score = -negamax(&next_game, depth, -eval_infinity, eval_infinity, 1);
+    return SearchResult { score = score, mv = mv };
+}
+
+fn search_root_serial(game: &Game, depth: int) -> Move? {
+    let moves = legal_moves(game);
+    let count = moves.__len() to int;
+    let mut i = 0;
+    let mut best_score = -eval_infinity;
+    let mut best_move: Move? = nothing;
+
+    while i < count {
+        let mv_ref = moves[i];
+        let mv = copy_move(mv_ref);
+        let next = apply_move(game, mv);
+        compare next {
+            nothing => {};
+            Some(next_game) => {
+                let score = -negamax(&next_game, depth - 1, -eval_infinity, eval_infinity, 1);
+                if score > best_score {
+                    best_score = score;
+                    best_move = Some(copy_move(mv_ref));
+                }
+            };
+        };
+        i = i + 1;
+    }
+
+    return best_move;
+}
+
+async fn search_root_parallel(game: Game, depth: int) -> Move? {
+    let moves = legal_moves(&game);
+    if moves.__len() <= 1:uint {
+        return search_root_serial(&game, depth);
+    }
+
+    let count = moves.__len() to int;
+    let mut tasks: Task<SearchResult>[] = [];
+    let mut i = 0;
+    while i < count {
+        let mv_ref = moves[i];
+        let mv = copy_move(mv_ref);
+        let next = apply_move(&game, mv);
+        compare next {
+            nothing => {};
+            Some(next_game) => {
+                let task = spawn score_root_task(next_game, copy_move(mv_ref), depth - 1);
+                tasks.push(task);
+            };
+        };
+        i = i + 1;
+    }
+
+    let mut best_score = -eval_infinity;
+    let mut best_move: Move? = nothing;
+    for task in tasks {
+        compare task.await() {
+            Success(result) => {
+                if result.score > best_score {
+                    best_score = result.score;
+                    best_move = Some(result.mv);
+                }
+            };
+            Cancelled() => {};
+        };
+    }
+
+    return best_move;
+}
+
+async fn search_best_move_snapshot(game: Game, depth: int) -> Move? {
+    if rt_worker_count() <= 1:uint {
+        return search_root_serial(&game, depth);
+    }
+    return compare search_root_parallel(game, depth).await() {
+        Success(mv) => mv;
+        Cancelled() => nothing;
+    };
+}
+
+pub fn search_best_move_at_depth(game: &Game, depth: int) -> Task<Move?> {
+    let wanted_depth = normalize_search_depth(depth);
+    let snapshot = copy_game(game);
+    return search_best_move_snapshot(snapshot, wanted_depth);
+}
+
+pub fn search_best_move(game: &Game) -> Task<Move?> {
+    return search_best_move_at_depth(game, default_search_depth);
+}

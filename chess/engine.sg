@@ -29,8 +29,11 @@ extern<Engine> {
         };
     }
 
-    pub async fn suggest_move(self: &Engine) -> Move? {
-        let mut moves = legal_moves(self.game);
-        return moves.pop();
+    pub fn suggest_move_depth(self: &Engine, depth: int) -> Task<Move?> {
+        return search_best_move_at_depth(self.game, depth);
+    }
+
+    pub fn suggest_move(self: &Engine) -> Task<Move?> {
+        return search_best_move(self.game);
     }
 }
